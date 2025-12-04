@@ -25,4 +25,5 @@ export interface GrantRecipe {
   projectContextEnabled?: boolean;
   projectContextFiles?: string[];
   locked?: boolean;
+  structuredOutput?: Record<string, string>;
 }
