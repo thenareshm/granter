@@ -1,17 +1,9 @@
 import { useState } from 'react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { DriveLogo } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
 import { useUserSettings } from '../hooks/useUserSettings';
-
-const DriveIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-    <path
-      d="M7.5 3 3 11l3 5.5L10.5 8 7.5 3Zm3 5L18 8l-3-5H7.5l3 5ZM9 13l-3 5h12l3-5H9Z"
-      fill="currentColor"
-    />
-  </svg>
-);
 
 const DriveConnectPage = () => {
   const { user, signInWithGoogle } = useAuth();
@@ -55,7 +47,7 @@ const DriveConnectPage = () => {
 
         <div className="flex justify-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-brand-600 dark:bg-slate-800">
-            <DriveIcon className="h-10 w-10" />
+            <DriveLogo className="h-10 w-10" />
           </div>
         </div>
 
@@ -94,7 +86,7 @@ const DriveConnectPage = () => {
                 : driveConnected
                   ? 'Reconnect Drive'
                   : 'Connect Drive'}
-            <DriveIcon className="h-4 w-4" />
+            <DriveLogo className="h-4 w-4" />
           </Button>
         </div>
       </Card>

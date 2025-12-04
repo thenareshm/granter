@@ -76,3 +76,11 @@ export const SaveIcon = (props: IconProps) => (
     />
   </svg>
 );
+
+export const DriveLogo = ({ className }: { className?: string }) => (
+  <img
+    src="/google-drive.svg"
+    className={className}
+    alt="Google Drive logo"
+  />
+);
