@@ -7,17 +7,36 @@ import { useApiKeys } from '../hooks/useApiKeys';
 const ApiKeysSettings = () => {
   const { user } = useAuth();
   const { apiKeys, loading, error, saveApiKeys } = useApiKeys();
-  const [localGeminiKey, setLocalGeminiKey] = useState('');
-  const [localOpenAiKey, setLocalOpenAiKey] = useState('');
+
+  const [geminiKey, setGeminiKey] = useState('');
+  const [openaiKey, setOpenaiKey] = useState('');
   const [showGemini, setShowGemini] = useState(false);
   const [showOpenAi, setShowOpenAi] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
-    setLocalGeminiKey(apiKeys?.geminiApiKey ?? '');
-    setLocalOpenAiKey(apiKeys?.openaiApiKey ?? '');
+    if (apiKeys) {
+      setGeminiKey(apiKeys.geminiApiKey ?? '');
+      setOpenaiKey(apiKeys.openaiApiKey ?? '');
+    }
   }, [apiKeys]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveSuccess(false);
+    try {
+      await saveApiKeys({
+        geminiApiKey: geminiKey || null,
+        openaiApiKey: openaiKey || null,
+      });
+      setSaveSuccess(true);
+    } catch {
+      // error already handled in hook
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -36,21 +55,6 @@ const ApiKeysSettings = () => {
     );
   }
 
-  const handleSave = async () => {
-    setStatus(null);
-    setSaveError(null);
-    try {
-      await saveApiKeys({
-        geminiApiKey: localGeminiKey || null,
-        openaiApiKey: localOpenAiKey || null,
-      });
-      setStatus('Settings saved');
-    } catch (err) {
-      console.error(err);
-      setSaveError('Failed to save settings');
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div>
@@ -66,14 +70,9 @@ const ApiKeysSettings = () => {
             {error}
           </div>
         )}
-        {saveError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {saveError}
-          </div>
-        )}
-        {status && (
+        {saveSuccess && (
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            {status}
+            Settings saved
           </div>
         )}
 
@@ -93,8 +92,8 @@ const ApiKeysSettings = () => {
           </div>
           <input
             type={showGemini ? 'text' : 'password'}
-            value={localGeminiKey}
-            onChange={(e) => setLocalGeminiKey(e.target.value)}
+            value={geminiKey}
+            onChange={(e) => setGeminiKey(e.target.value)}
             className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
             placeholder="Paste your Gemini API key"
           />
@@ -116,15 +115,17 @@ const ApiKeysSettings = () => {
           </div>
           <input
             type={showOpenAi ? 'text' : 'password'}
-            value={localOpenAiKey}
-            onChange={(e) => setLocalOpenAiKey(e.target.value)}
+            value={openaiKey}
+            onChange={(e) => setOpenaiKey(e.target.value)}
             className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
             placeholder="Paste your OpenAI API key"
           />
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={handleSave}>Save</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
         </div>
       </Card>
     </div>

@@ -12,8 +12,11 @@ import {
 } from '../hooks/useGrantRecipes';
 import { useAuth } from '../context/AuthContext';
 import { useApiKeys } from '../hooks/useApiKeys';
-import { generateWithModel } from '../services/aiClient';
-import type { SupportedModel } from '../types/models';
+import {
+  generateWithModel,
+  type GenerateResult,
+  type SupportedModel,
+} from '../services/aiClient';
 import type { GrantRecipe, InputParam, OutputField } from '../types';
 
 const MOCK_PROJECT_FILES: ProjectFile[] = [
@@ -58,7 +61,11 @@ const GrantRecipeDetail = () => {
     updateRecipe,
     loading: recipesLoading,
   } = useGrantRecipes();
-  const { apiKeys, loading: apiKeysLoading } = useApiKeys();
+  const {
+    apiKeys,
+    loading: apiKeysLoading,
+    error: apiKeysError,
+  } = useApiKeys();
 
   const [form, setForm] = useState<GrantRecipe>(createEmptyRecipe());
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +73,7 @@ const GrantRecipeDetail = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [contextMessage, setContextMessage] = useState<string | null>(null);
+  const [generatedResult, setGeneratedResult] = useState<GenerateResult | null>(null);
   const contextMessageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isEditing = Boolean(id);
@@ -97,6 +105,7 @@ const GrantRecipeDetail = () => {
     setNotFound(false);
     setForm({
       ...existing,
+      modelType: existing.modelType || 'gemini-2.5-flash',
       projectContextEnabled: existing.projectContextEnabled ?? false,
       projectContextFiles: existing.projectContextFiles ?? [],
     });
@@ -136,7 +145,7 @@ const GrantRecipeDetail = () => {
         ...form,
         id: form.id || crypto.randomUUID(),
         tokenCount: computeTokenCount(form.prompt),
-        modelType: 'gemini-2.5-flash',
+        modelType: form.modelType || 'gemini-2.5-flash',
         updatedAt: now,
         projectContextEnabled: form.projectContextEnabled ?? false,
         projectContextFiles: form.projectContextFiles ?? [],
@@ -246,6 +255,10 @@ const GrantRecipeDetail = () => {
       alert('Loading API key settings, please try again in a moment.');
       return;
     }
+    if (!apiKeys) {
+      alert('Sign in and add your API keys in Settings → API Keys before generating.');
+      return;
+    }
     const hasDescription = form.description.trim().length > 0;
     const hasPrompt = form.prompt.trim().length > 0;
     const hasOutputs = form.outputFields.length > 0;
@@ -270,10 +283,12 @@ const GrantRecipeDetail = () => {
         apiKeys: apiKeys ?? {},
       });
       console.log('Project context for generation:', projectContextInfo);
-      alert(response.message);
+      setGeneratedResult(response);
+      // alert('Generation complete. See Structured Output below.');
     } catch (err) {
       console.error(err);
       const message = err instanceof Error ? err.message : 'Failed to generate';
+      setGeneratedResult(null);
       alert(message);
     }
   };
@@ -392,6 +407,11 @@ const GrantRecipeDetail = () => {
       )}
 
       <Card>
+        {apiKeysError && (
+          <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+            {apiKeysError}
+          </div>
+        )}
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -647,7 +667,21 @@ const GrantRecipeDetail = () => {
                 Clone
               </Button>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
+              <select
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                value={form.modelType}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    modelType: e.target.value as SupportedModel,
+                  }))
+                }
+              >
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                <option value="gpt-5.1">OpenAI GPT 5.1</option>
+              </select>
               <Button size="md" onClick={handleGenerate}>
                 Generate
               </Button>
@@ -655,6 +689,31 @@ const GrantRecipeDetail = () => {
           </div>
         </div>
       </Card>
+
+      {generatedResult && form.outputFields && form.outputFields.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white px-6 py-4 shadow-sm">
+          <h3 className="mb-2 text-base font-semibold text-slate-800">Structured Output</h3>
+          <div className="divide-y divide-slate-100">
+            {form.outputFields.map((field) => (
+              <div
+                key={field.id}
+                className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:gap-4"
+              >
+                <div className="w-full text-sm font-medium text-slate-700 sm:w-1/3">
+                  {field.label}
+                </div>
+                <div className="w-full text-sm text-slate-700 sm:w-2/3">
+                  {generatedResult.structured[field.label] ?? (
+                    <span className="italic text-slate-400">No value generated.</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Uncomment for debugging raw response */}
+          {/* <pre className="mt-4 whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs text-slate-600">{generatedResult.rawText}</pre> */}
+        </div>
+      )}
       <ProjectContextModal
         isOpen={isProjectModalOpen}
         files={MOCK_PROJECT_FILES}
