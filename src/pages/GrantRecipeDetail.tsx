@@ -11,6 +11,9 @@ import {
   useGrantRecipes,
 } from '../hooks/useGrantRecipes';
 import { useAuth } from '../context/AuthContext';
+import { useApiKeys } from '../hooks/useApiKeys';
+import { generateWithModel } from '../services/aiClient';
+import type { SupportedModel } from '../types/models';
 import type { GrantRecipe, InputParam, OutputField } from '../types';
 
 const MOCK_PROJECT_FILES: ProjectFile[] = [
@@ -55,6 +58,7 @@ const GrantRecipeDetail = () => {
     updateRecipe,
     loading: recipesLoading,
   } = useGrantRecipes();
+  const { apiKeys, loading: apiKeysLoading } = useApiKeys();
 
   const [form, setForm] = useState<GrantRecipe>(createEmptyRecipe());
   const [error, setError] = useState<string | null>(null);
@@ -238,6 +242,10 @@ const GrantRecipeDetail = () => {
       setError('Sign in with Google to save and generate.');
       return;
     }
+    if (apiKeysLoading) {
+      alert('Loading API key settings, please try again in a moment.');
+      return;
+    }
     const hasDescription = form.description.trim().length > 0;
     const hasPrompt = form.prompt.trim().length > 0;
     const hasOutputs = form.outputFields.length > 0;
@@ -248,13 +256,26 @@ const GrantRecipeDetail = () => {
     }
 
     setError(null);
-    await persistRecipe(true);
+    const saved = await persistRecipe(true);
+    const recipeForGen = saved ?? form;
     const projectContextInfo = {
       enabled: projectContextEnabled,
       files: selectedProjectContextFiles,
     };
-    console.log('Project context for generation:', projectContextInfo);
-    alert('Generation stub – integration coming soon');
+
+    try {
+      const response = await generateWithModel({
+        modelType: recipeForGen.modelType as SupportedModel,
+        recipe: recipeForGen,
+        apiKeys: apiKeys ?? {},
+      });
+      console.log('Project context for generation:', projectContextInfo);
+      alert(response.message);
+    } catch (err) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : 'Failed to generate';
+      alert(message);
+    }
   };
 
   const handleSave = async () => {

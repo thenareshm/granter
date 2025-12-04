@@ -5,6 +5,7 @@ import { cn } from '../utils/cn';
 const navItems = [
   { label: 'Dashboard', to: '/', end: true },
   { label: 'Grant Recipes', to: '/grant-recipes' },
+  { label: 'API Keys', to: '/settings/api-keys' },
 ];
 
 export const AppLayout = () => {
