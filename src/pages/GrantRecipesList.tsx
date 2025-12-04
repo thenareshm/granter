@@ -2,12 +2,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Table } from '../components/Table';
 import { EditIcon, PlusIcon, TrashIcon } from '../components/Icons';
 import { useGrantRecipes } from '../hooks/useGrantRecipes';
+import { useAuth } from '../context/AuthContext';
 
 const GrantRecipesList = () => {
-  const { recipes, deleteRecipe } = useGrantRecipes();
+  const { user } = useAuth();
+  const { recipes, deleteRecipe, loading } = useGrantRecipes();
   const navigate = useNavigate();
 
-  const handleDelete = (
+  const handleDelete = async (
     event: React.MouseEvent<HTMLButtonElement>,
     id: string,
     description: string,
@@ -16,8 +18,12 @@ const GrantRecipesList = () => {
     const confirmed = window.confirm(
       `Delete "${description}"? This action cannot be undone.`,
     );
-    if (confirmed) {
-      deleteRecipe(id);
+    if (!confirmed) return;
+    try {
+      await deleteRecipe(id);
+    } catch (error) {
+      console.error('Failed to delete recipe', error);
+      alert('Please sign in to delete recipes.');
     }
   };
 
@@ -39,7 +45,17 @@ const GrantRecipesList = () => {
         </Link>
       </div>
 
-      {recipes.length === 0 ? (
+      {!user && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 shadow-card">
+          Sign in with Google to sync your recipes to the cloud.
+        </div>
+      )}
+
+      {loading ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500 shadow-card">
+          Loading recipes…
+        </div>
+      ) : recipes.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500 shadow-card">
           No recipes yet. Click the + button to create one.
         </div>

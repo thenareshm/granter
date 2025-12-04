@@ -1,12 +1,15 @@
 import { RouterProvider } from 'react-router-dom';
-import { GrantRecipesProvider } from './hooks/useGrantRecipes';
 import { router } from './router';
+import { GrantRecipesProvider } from './hooks/useGrantRecipes';
+import { AuthProvider } from './context/AuthContext';
 
 const App = () => {
   return (
-    <GrantRecipesProvider>
-      <RouterProvider router={router} />
-    </GrantRecipesProvider>
+    <AuthProvider>
+      <GrantRecipesProvider>
+        <RouterProvider router={router} />
+      </GrantRecipesProvider>
+    </AuthProvider>
   );
 };
 

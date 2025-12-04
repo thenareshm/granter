@@ -1,4 +1,15 @@
 import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+} from 'firebase/firestore';
+import {
   createContext,
   createElement,
   type PropsWithChildren,
@@ -7,19 +18,20 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { db } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 import type { GrantRecipe } from '../types';
-
-const STORAGE_KEY = 'granter.recipes';
 
 interface GrantRecipesContextValue {
   recipes: GrantRecipe[];
+  loading: boolean;
   getRecipeById: (id: string) => GrantRecipe | undefined;
-  createRecipe: (recipePartial: Partial<GrantRecipe>) => GrantRecipe;
+  createRecipe: (recipePartial: Partial<GrantRecipe>) => Promise<GrantRecipe>;
   updateRecipe: (
     id: string,
     updates: Partial<GrantRecipe>,
-  ) => GrantRecipe | undefined;
-  deleteRecipe: (id: string) => void;
+  ) => Promise<GrantRecipe | undefined>;
+  deleteRecipe: (id: string) => Promise<void>;
 }
 
 const GrantRecipesContext = createContext<GrantRecipesContextValue | null>(
@@ -37,90 +49,83 @@ export const formatTimestamp = (date: Date) => {
 export const computeTokenCount = (prompt?: string) =>
   Math.max(0, Math.round((prompt?.length ?? 0) / 4));
 
-const seedRecipes = (): GrantRecipe[] => {
-  const now = formatTimestamp(new Date());
-  const baseModel = 'gemini-2.5-flash';
-  const firstPrompt =
-    'Draft a concise outline for a community grant proposal focused on STEM access. Include an executive summary and a short budget line item.';
-  const secondPrompt =
-    'Create a grant recipe to request a one-pager with objectives, success metrics, and timeline for a youth arts program.';
-
-  return [
-    {
-      id: 'seed-1',
-      description: 'STEM Access Outline',
-      prompt: firstPrompt,
-      projectContextEnabled: false,
-      projectContextFiles: [],
-      inputParams: [
-        { id: 'ip-1', key: 'organization', value: 'Our Wave Labs' },
-        { id: 'ip-2', key: 'focus_area', value: 'STEM Education' },
-      ],
-      outputFields: [
-        { id: 'op-1', label: 'Executive Summary', max: 150, limitType: 'words' },
-        { id: 'op-2', label: 'Budget Snapshot', max: 600, limitType: 'chars' },
-      ],
-      tokenCount: computeTokenCount(firstPrompt),
-      modelType: baseModel,
-      updatedAt: now,
-    },
-    {
-      id: 'seed-2',
-      description: 'Youth Arts One-Pager',
-      prompt: secondPrompt,
-      projectContextEnabled: false,
-      projectContextFiles: [],
-      inputParams: [
-        { id: 'ip-3', key: 'program', value: 'Youth Arts Collective' },
-        { id: 'ip-4', key: 'deadline', value: '03/15/2025' },
-      ],
-      outputFields: [
-        { id: 'op-3', label: 'Objectives', max: 120, limitType: 'words' },
-        { id: 'op-4', label: 'Timeline', max: 900, limitType: 'chars' },
-      ],
-      tokenCount: computeTokenCount(secondPrompt),
-      modelType: baseModel,
-      updatedAt: now,
-    },
-  ];
+type FirestoreRecipe = Omit<GrantRecipe, 'updatedAt'> & {
+  updatedAt?: Timestamp | string;
 };
 
-const loadInitialRecipes = (): GrantRecipe[] => {
-  if (typeof window === 'undefined') return seedRecipes();
+const normalizeRecipe = (data: FirestoreRecipe, id: string): GrantRecipe => {
+  const updatedAtString =
+    data.updatedAt instanceof Timestamp
+      ? formatTimestamp(data.updatedAt.toDate())
+      : typeof data.updatedAt === 'string'
+        ? data.updatedAt
+        : '';
 
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return seedRecipes();
-
-  try {
-    const parsed = JSON.parse(stored) as GrantRecipe[];
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
-    }
-  } catch (error) {
-    console.warn('Failed to parse stored recipes, using defaults', error);
-  }
-
-  return seedRecipes();
+  return {
+    id,
+    description: data.description ?? '',
+    prompt: data.prompt ?? '',
+    inputParams: data.inputParams ?? [],
+    outputFields: data.outputFields ?? [],
+    tokenCount: data.tokenCount ?? computeTokenCount(data.prompt),
+    modelType: data.modelType ?? 'gemini-2.5-flash',
+    updatedAt: updatedAtString,
+    projectContextEnabled: data.projectContextEnabled ?? false,
+    projectContextFiles: data.projectContextFiles ?? [],
+  };
 };
 
 export const GrantRecipesProvider = ({ children }: PropsWithChildren) => {
-  const [recipes, setRecipes] = useState<GrantRecipe[]>(() =>
-    loadInitialRecipes(),
-  );
+  const { user } = useAuth();
+  const [recipes, setRecipes] = useState<GrantRecipe[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
-  }, [recipes]);
+    const fetchRecipes = async () => {
+      if (!user) {
+        setRecipes([]);
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const recipesRef = collection(db, 'users', user.uid, 'recipes');
+        const q = query(recipesRef, orderBy('updatedAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const loaded = snapshot.docs.map((docSnap) =>
+          normalizeRecipe(docSnap.data() as FirestoreRecipe, docSnap.id),
+        );
+        setRecipes(loaded);
+      } catch (error) {
+        console.error('Failed to load recipes from Firestore', error);
+        setRecipes([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecipes();
+  }, [user]);
 
   const value = useMemo<GrantRecipesContextValue>(() => {
+    const ensureUser = () => {
+      if (!user) {
+        throw new Error('Sign in to manage recipes.');
+      }
+      return user;
+    };
+
     const getRecipeById = (id: string) =>
       recipes.find((recipe) => recipe.id === id);
 
-    const createRecipe = (recipePartial: Partial<GrantRecipe>) => {
+    const createRecipe = async (
+      recipePartial: Partial<GrantRecipe>,
+    ): Promise<GrantRecipe> => {
+      const currentUser = ensureUser();
       const now = new Date();
+      const id = recipePartial.id ?? crypto.randomUUID();
       const recipe: GrantRecipe = {
-        id: recipePartial.id ?? crypto.randomUUID(),
+        id,
         description: recipePartial.description ?? '',
         prompt: recipePartial.prompt ?? '',
         inputParams: recipePartial.inputParams ?? [],
@@ -128,41 +133,58 @@ export const GrantRecipesProvider = ({ children }: PropsWithChildren) => {
         tokenCount:
           recipePartial.tokenCount ?? computeTokenCount(recipePartial.prompt),
         modelType: recipePartial.modelType ?? 'gemini-2.5-flash',
-        updatedAt: recipePartial.updatedAt ?? formatTimestamp(now),
+        updatedAt: formatTimestamp(now),
         projectContextEnabled: recipePartial.projectContextEnabled ?? false,
         projectContextFiles: recipePartial.projectContextFiles ?? [],
       };
-      setRecipes((prev) => [recipe, ...prev]);
+
+      const recipeRef = doc(db, 'users', currentUser.uid, 'recipes', id);
+      await setDoc(recipeRef, { ...recipe, updatedAt: serverTimestamp() });
+      setRecipes((prev) => {
+        const next = [recipe, ...prev.filter((r) => r.id !== id)];
+        return next;
+      });
       return recipe;
     };
 
-    const updateRecipe = (
+    const updateRecipe = async (
       id: string,
       updates: Partial<GrantRecipe>,
-    ): GrantRecipe | undefined => {
-      let nextRecipe: GrantRecipe | undefined;
+    ): Promise<GrantRecipe | undefined> => {
+      const currentUser = ensureUser();
+      const existing = getRecipeById(id);
+      if (!existing) return undefined;
+
+      const merged: GrantRecipe = {
+        ...existing,
+        ...updates,
+        updatedAt: formatTimestamp(new Date()),
+      };
+
+      const recipeRef = doc(db, 'users', currentUser.uid, 'recipes', id);
+      await setDoc(recipeRef, { ...merged, updatedAt: serverTimestamp() }, { merge: true });
       setRecipes((prev) =>
-        prev.map((recipe) => {
-          if (recipe.id !== id) return recipe;
-          nextRecipe = { ...recipe, ...updates };
-          return nextRecipe;
-        }),
+        prev.map((recipe) => (recipe.id === id ? merged : recipe)),
       );
-      return nextRecipe;
+      return merged;
     };
 
-    const deleteRecipe = (id: string) => {
+    const deleteRecipe = async (id: string): Promise<void> => {
+      const currentUser = ensureUser();
+      const recipeRef = doc(db, 'users', currentUser.uid, 'recipes', id);
+      await deleteDoc(recipeRef);
       setRecipes((prev) => prev.filter((recipe) => recipe.id !== id));
     };
 
     return {
       recipes,
+      loading,
       getRecipeById,
       createRecipe,
       updateRecipe,
       deleteRecipe,
     };
-  }, [recipes]);
+  }, [recipes, user, loading]);
 
   return createElement(GrantRecipesContext.Provider, { value }, children);
 };

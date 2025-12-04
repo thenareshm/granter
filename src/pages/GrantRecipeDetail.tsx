@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { DuplicateIcon, PlusIcon, TrashIcon } from '../components/Icons';
+import { DuplicateIcon, PlusIcon, SaveIcon, TrashIcon } from '../components/Icons';
 import { Toggle } from '../components/Toggle';
 import { ProjectContextModal, type ProjectFile } from '../components/ProjectContextModal';
 import {
@@ -10,6 +10,7 @@ import {
   formatTimestamp,
   useGrantRecipes,
 } from '../hooks/useGrantRecipes';
+import { useAuth } from '../context/AuthContext';
 import type { GrantRecipe, InputParam, OutputField } from '../types';
 
 const MOCK_PROJECT_FILES: ProjectFile[] = [
@@ -47,7 +48,13 @@ const createEmptyRecipe = (): GrantRecipe => ({
 const GrantRecipeDetail = () => {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
-  const { getRecipeById, createRecipe, updateRecipe } = useGrantRecipes();
+  const { user } = useAuth();
+  const {
+    getRecipeById,
+    createRecipe,
+    updateRecipe,
+    loading: recipesLoading,
+  } = useGrantRecipes();
 
   const [form, setForm] = useState<GrantRecipe>(createEmptyRecipe());
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +70,21 @@ const GrantRecipeDetail = () => {
   const attachedFilesCount = selectedProjectContextFiles.length;
 
   useEffect(() => {
-    if (!id) return;
+    if (recipesLoading) return;
+
+    if (!id) {
+      setForm(createEmptyRecipe());
+      setIsDirty(false);
+      setNotFound(false);
+      return;
+    }
+
+    if (!user) {
+      setForm(createEmptyRecipe());
+      setNotFound(false);
+      return;
+    }
+
     const existing = getRecipeById(id);
     if (!existing) {
       setNotFound(true);
@@ -76,17 +97,10 @@ const GrantRecipeDetail = () => {
       projectContextFiles: existing.projectContextFiles ?? [],
     });
     setIsDirty(false);
-  }, [id, getRecipeById]);
-
-  useEffect(() => {
-    if (id) return;
-    setForm(createEmptyRecipe());
-    setIsDirty(false);
-    setNotFound(false);
-  }, [id]);
+  }, [id, getRecipeById, recipesLoading, user]);
 
   const persistRecipe = useCallback(
-    (force = false) => {
+    async (force = false) => {
       const hasMeaningfulContent = Boolean(
         form.description.trim() ||
           form.prompt.trim() ||
@@ -109,6 +123,10 @@ const GrantRecipeDetail = () => {
         return undefined;
       }
 
+      if (!user) {
+        return undefined;
+      }
+
       const now = formatTimestamp(new Date());
       const payload: GrantRecipe = {
         ...form,
@@ -122,9 +140,9 @@ const GrantRecipeDetail = () => {
 
       const targetId = id ?? form.id;
       if (targetId && getRecipeById(targetId)) {
-        updateRecipe(targetId, payload);
+        await updateRecipe(targetId, payload);
       } else {
-        const created = createRecipe(payload);
+        const created = await createRecipe(payload);
         payload.id = created.id;
       }
 
@@ -132,14 +150,8 @@ const GrantRecipeDetail = () => {
       setIsDirty(false);
       return payload;
     },
-    [form, id, isDirty, createRecipe, updateRecipe, getRecipeById],
+    [form, id, isDirty, createRecipe, updateRecipe, getRecipeById, user],
   );
-
-  useEffect(() => {
-    return () => {
-      persistRecipe();
-    };
-  }, [persistRecipe]);
 
   useEffect(() => {
     return () => {
@@ -221,7 +233,11 @@ const GrantRecipeDetail = () => {
     }
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
+    if (!user) {
+      setError('Sign in with Google to save and generate.');
+      return;
+    }
     const hasDescription = form.description.trim().length > 0;
     const hasPrompt = form.prompt.trim().length > 0;
     const hasOutputs = form.outputFields.length > 0;
@@ -232,7 +248,7 @@ const GrantRecipeDetail = () => {
     }
 
     setError(null);
-    persistRecipe(true);
+    await persistRecipe(true);
     const projectContextInfo = {
       enabled: projectContextEnabled,
       files: selectedProjectContextFiles,
@@ -241,7 +257,20 @@ const GrantRecipeDetail = () => {
     alert('Generation stub – integration coming soon');
   };
 
-  const handleClone = () => {
+  const handleSave = async () => {
+    if (!user) {
+      setError('Sign in with Google to save your recipe.');
+      return;
+    }
+    setError(null);
+    await persistRecipe(true);
+  };
+
+  const handleClone = async () => {
+    if (!user) {
+      setError('Sign in with Google to clone recipes.');
+      return;
+    }
     const hasContent = Boolean(
       form.description.trim() ||
         form.prompt.trim() ||
@@ -250,7 +279,7 @@ const GrantRecipeDetail = () => {
     );
     if (!hasContent) return;
 
-    const saved = persistRecipe(true);
+    const saved = await persistRecipe(true);
     if (!saved) return;
 
     const source = saved ?? form;
@@ -263,7 +292,7 @@ const GrantRecipeDetail = () => {
       tokenCount: computeTokenCount(source.prompt),
     };
 
-    createRecipe(clone);
+    await createRecipe(clone);
     navigate('/grant-recipes');
   };
 
@@ -304,6 +333,15 @@ const GrantRecipeDetail = () => {
     [isEditing],
   );
 
+  if (recipesLoading && id) {
+    return (
+      <Card className="space-y-2">
+        <div className="text-lg font-semibold text-slate-800">Loading recipe…</div>
+        <p className="text-sm text-slate-500">Please wait while we fetch your data.</p>
+      </Card>
+    );
+  }
+
   if (notFound) {
     return (
       <Card className="space-y-4">
@@ -325,6 +363,12 @@ const GrantRecipeDetail = () => {
           </p>
         </div>
       </div>
+
+      {!user && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 shadow-card">
+          Sign in with Google to save and sync your recipes in the cloud.
+        </div>
+      )}
 
       <Card>
         {error && (
@@ -563,6 +607,15 @@ const GrantRecipeDetail = () => {
 
           <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 md:flex-row md:items-center md:justify-between">
             <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSave}
+                className="text-slate-700"
+              >
+                <SaveIcon className="h-4 w-4" />
+                Save
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

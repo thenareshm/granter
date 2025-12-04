@@ -53,3 +53,26 @@ export const DuplicateIcon = (props: IconProps) => (
     />
   </svg>
 );
+
+export const SaveIcon = (props: IconProps) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
+    <path
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M5 4h11l3 3v11a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
+    />
+    <path
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M7 4v5h7V4"
+    />
+    <path
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M8 14h8v5H8z"
+    />
+  </svg>
+);
