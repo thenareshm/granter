@@ -1,23 +1,15 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { DriveLogo } from '../components/Icons';
 import { useTheme } from '../hooks/useTheme';
 import { useUserSettings } from '../hooks/useUserSettings';
 import { cn } from '../utils/cn';
-
-const DriveIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-    <path
-      d="M7.5 3 3 11l3 5.5L10.5 8 7.5 3Zm3 5L18 8l-3-5H7.5l3 5ZM9 13l-3 5h12l3-5H9Z"
-      fill="currentColor"
-    />
-  </svg>
-);
 
 const navItems = [
   { label: 'Dashboard', to: '/', end: true },
   { label: 'Grant Recipes', to: '/grant-recipes' },
   { label: 'API Keys', to: '/settings/api-keys' },
-  { label: 'Drive', to: '/drive', icon: DriveIcon },
+  { label: 'Drive', to: '/drive', icon: DriveLogo },
 ];
 
 export const AppLayout = () => {
