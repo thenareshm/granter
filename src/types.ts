@@ -22,4 +22,6 @@ export interface GrantRecipe {
   tokenCount: number;
   modelType: string;
   updatedAt: string;
+  projectContextEnabled?: boolean;
+  projectContextFiles?: string[];
 }

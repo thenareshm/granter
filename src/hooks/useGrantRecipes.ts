@@ -50,6 +50,8 @@ const seedRecipes = (): GrantRecipe[] => {
       id: 'seed-1',
       description: 'STEM Access Outline',
       prompt: firstPrompt,
+      projectContextEnabled: false,
+      projectContextFiles: [],
       inputParams: [
         { id: 'ip-1', key: 'organization', value: 'Our Wave Labs' },
         { id: 'ip-2', key: 'focus_area', value: 'STEM Education' },
@@ -66,6 +68,8 @@ const seedRecipes = (): GrantRecipe[] => {
       id: 'seed-2',
       description: 'Youth Arts One-Pager',
       prompt: secondPrompt,
+      projectContextEnabled: false,
+      projectContextFiles: [],
       inputParams: [
         { id: 'ip-3', key: 'program', value: 'Youth Arts Collective' },
         { id: 'ip-4', key: 'deadline', value: '03/15/2025' },
@@ -125,6 +129,8 @@ export const GrantRecipesProvider = ({ children }: PropsWithChildren) => {
           recipePartial.tokenCount ?? computeTokenCount(recipePartial.prompt),
         modelType: recipePartial.modelType ?? 'gemini-2.5-flash',
         updatedAt: recipePartial.updatedAt ?? formatTimestamp(now),
+        projectContextEnabled: recipePartial.projectContextEnabled ?? false,
+        projectContextFiles: recipePartial.projectContextFiles ?? [],
       };
       setRecipes((prev) => [recipe, ...prev]);
       return recipe;

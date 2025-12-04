@@ -15,6 +15,7 @@ export const Toggle = ({
   labelOn = 'Chars',
   labelOff = 'Words',
   className,
+  disabled,
   ...props
 }: ToggleProps) => {
   const label = checked ? labelOn : labelOff;
@@ -23,8 +24,16 @@ export const Toggle = ({
       type="button"
       role="switch"
       aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={cn('group inline-flex items-center gap-2 text-sm font-medium', className)}
+      onClick={() => {
+        if (disabled) return;
+        onChange(!checked);
+      }}
+      disabled={disabled}
+      className={cn(
+        'group inline-flex items-center gap-2 text-sm font-medium transition',
+        disabled && 'cursor-not-allowed opacity-50',
+        className,
+      )}
       {...props}
     >
       <span

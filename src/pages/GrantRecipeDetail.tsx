@@ -1,15 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { DuplicateIcon, PlusIcon, TrashIcon } from '../components/Icons';
 import { Toggle } from '../components/Toggle';
+import { ProjectContextModal, type ProjectFile } from '../components/ProjectContextModal';
 import {
   computeTokenCount,
   formatTimestamp,
   useGrantRecipes,
 } from '../hooks/useGrantRecipes';
 import type { GrantRecipe, InputParam, OutputField } from '../types';
+
+const MOCK_PROJECT_FILES: ProjectFile[] = [
+  { id: 'file1', name: 'STEM Access 2024 Proposal.pdf' },
+  { id: 'file2', name: 'Youth Arts One-Pager.docx' },
+  { id: 'file3', name: 'Annual Impact Report 2023.pdf' },
+];
 
 const blankInputParam = (): InputParam => ({
   id: crypto.randomUUID(),
@@ -33,6 +40,8 @@ const createEmptyRecipe = (): GrantRecipe => ({
   tokenCount: 0,
   modelType: 'gemini-2.5-flash',
   updatedAt: '',
+  projectContextEnabled: false,
+  projectContextFiles: [],
 });
 
 const GrantRecipeDetail = () => {
@@ -44,8 +53,14 @@ const GrantRecipeDetail = () => {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [contextMessage, setContextMessage] = useState<string | null>(null);
+  const contextMessageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isEditing = Boolean(id);
+  const selectedProjectContextFiles = form.projectContextFiles ?? [];
+  const projectContextEnabled = form.projectContextEnabled ?? false;
+  const attachedFilesCount = selectedProjectContextFiles.length;
 
   useEffect(() => {
     if (!id) return;
@@ -55,7 +70,11 @@ const GrantRecipeDetail = () => {
       return;
     }
     setNotFound(false);
-    setForm(existing);
+    setForm({
+      ...existing,
+      projectContextEnabled: existing.projectContextEnabled ?? false,
+      projectContextFiles: existing.projectContextFiles ?? [],
+    });
     setIsDirty(false);
   }, [id, getRecipeById]);
 
@@ -97,6 +116,8 @@ const GrantRecipeDetail = () => {
         tokenCount: computeTokenCount(form.prompt),
         modelType: 'gemini-2.5-flash',
         updatedAt: now,
+        projectContextEnabled: form.projectContextEnabled ?? false,
+        projectContextFiles: form.projectContextFiles ?? [],
       };
 
       const targetId = id ?? form.id;
@@ -119,6 +140,14 @@ const GrantRecipeDetail = () => {
       persistRecipe();
     };
   }, [persistRecipe]);
+
+  useEffect(() => {
+    return () => {
+      if (contextMessageTimeout.current) {
+        clearTimeout(contextMessageTimeout.current);
+      }
+    };
+  }, []);
 
   const handleFieldChange = <K extends keyof GrantRecipe>(
     key: K,
@@ -155,6 +184,43 @@ const GrantRecipeDetail = () => {
     setError(null);
   };
 
+  const handleOpenProjectContext = () => {
+    setIsProjectModalOpen(true);
+  };
+
+  const handleAttachProjectFiles = (fileIds: string[]) => {
+    setForm((prev) => ({
+      ...prev,
+      projectContextFiles: fileIds,
+      projectContextEnabled:
+        fileIds.length === 0 ? false : prev.projectContextEnabled ?? false,
+    }));
+    if (fileIds.length === 0) {
+      setContextMessage(null);
+    }
+    setIsDirty(true);
+  };
+
+  const handleProjectContextToggle = (enabled: boolean) => {
+    if (attachedFilesCount === 0) return;
+    setForm((prev) => ({ ...prev, projectContextEnabled: enabled }));
+    setIsDirty(true);
+    setError(null);
+
+    if (contextMessageTimeout.current) {
+      clearTimeout(contextMessageTimeout.current);
+    }
+
+    if (enabled) {
+      setContextMessage('Project context added to prompt.');
+      contextMessageTimeout.current = setTimeout(() => {
+        setContextMessage(null);
+      }, 2800);
+    } else {
+      setContextMessage(null);
+    }
+  };
+
   const handleGenerate = () => {
     const hasDescription = form.description.trim().length > 0;
     const hasPrompt = form.prompt.trim().length > 0;
@@ -167,6 +233,11 @@ const GrantRecipeDetail = () => {
 
     setError(null);
     persistRecipe(true);
+    const projectContextInfo = {
+      enabled: projectContextEnabled,
+      files: selectedProjectContextFiles,
+    };
+    console.log('Project context for generation:', projectContextInfo);
     alert('Generation stub – integration coming soon');
   };
 
@@ -277,9 +348,23 @@ const GrantRecipeDetail = () => {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
-              Prompt
-            </label>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <label className="text-sm font-semibold text-slate-700">Prompt</label>
+              <button
+                type="button"
+                onClick={handleOpenProjectContext}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-brand-600 shadow-sm transition hover:bg-brand-50"
+                aria-label="Attach project context"
+              >
+                <PlusIcon className="h-4 w-4" />
+              </button>
+            </div>
+            {attachedFilesCount > 0 && (
+              <div className="mb-2 text-xs font-medium text-slate-600">
+                {attachedFilesCount} file{attachedFilesCount === 1 ? '' : 's'} attached as project
+                context
+              </div>
+            )}
             <textarea
               value={form.prompt}
               onChange={(event) => handleFieldChange('prompt', event.target.value)}
@@ -287,6 +372,35 @@ const GrantRecipeDetail = () => {
               className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
               placeholder="System prompt for your grant recipe"
             />
+          </div>
+
+          <div className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="text-sm font-semibold text-slate-800">Project context</div>
+                {attachedFilesCount === 0 ? (
+                  <p className="text-xs text-slate-500">
+                    Attach files first to enable project context.
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-600">
+                    {projectContextEnabled
+                      ? `Project context ON • ${attachedFilesCount} file${attachedFilesCount === 1 ? '' : 's'} selected`
+                      : `${attachedFilesCount} file${attachedFilesCount === 1 ? '' : 's'} selected • toggle to include in prompt`}
+                  </p>
+                )}
+                {contextMessage && (
+                  <p className="text-xs font-medium text-brand-700">{contextMessage}</p>
+                )}
+              </div>
+              <Toggle
+                checked={projectContextEnabled}
+                onChange={handleProjectContextToggle}
+                disabled={attachedFilesCount === 0}
+                labelOff="Off"
+                labelOn="On"
+              />
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -467,6 +581,13 @@ const GrantRecipeDetail = () => {
           </div>
         </div>
       </Card>
+      <ProjectContextModal
+        isOpen={isProjectModalOpen}
+        files={MOCK_PROJECT_FILES}
+        initialSelected={selectedProjectContextFiles}
+        onClose={() => setIsProjectModalOpen(false)}
+        onAttach={handleAttachProjectFiles}
+      />
     </div>
   );
 };
