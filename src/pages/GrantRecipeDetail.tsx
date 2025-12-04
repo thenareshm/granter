@@ -480,33 +480,33 @@ const GrantRecipeDetail = () => {
             />
           </div>
 
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <label className="text-sm font-semibold text-slate-700">Prompt</label>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-slate-700">Prompt</label>
+            {attachedFilesCount > 0 && (
+              <div className="text-xs font-medium text-slate-600">
+                {attachedFilesCount} file{attachedFilesCount === 1 ? '' : 's'} attached as project
+                context
+              </div>
+            )}
+            <div className="relative">
+              <textarea
+                value={form.prompt}
+                onChange={(event) => handleFieldChange('prompt', event.target.value)}
+                disabled={isLocked}
+                rows={6}
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 pb-12 pr-4 pt-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                placeholder="System prompt for your grant recipe"
+              />
               <button
                 type="button"
                 onClick={handleOpenProjectContext}
                 disabled={isLocked}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-brand-600 shadow-sm transition hover:bg-brand-50"
+                className="absolute bottom-3 left-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                 aria-label="Attach project context"
               >
                 <PlusIcon className="h-4 w-4" />
               </button>
             </div>
-            {attachedFilesCount > 0 && (
-              <div className="mb-2 text-xs font-medium text-slate-600">
-                {attachedFilesCount} file{attachedFilesCount === 1 ? '' : 's'} attached as project
-                context
-              </div>
-            )}
-            <textarea
-              value={form.prompt}
-              onChange={(event) => handleFieldChange('prompt', event.target.value)}
-              disabled={isLocked}
-              rows={6}
-              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-              placeholder="System prompt for your grant recipe"
-            />
           </div>
 
           <div className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3">
