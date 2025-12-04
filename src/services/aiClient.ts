@@ -89,22 +89,52 @@ function parseStructuredOutput(raw: string): GenerateResult {
 }
 
 function buildOpenAIJsonSchema(recipe: GrantRecipe) {
-  const labels = recipe.outputFields?.map((f) => f.label).filter(Boolean) ?? [];
+  const fields = recipe.outputFields ?? [];
 
   const properties: Record<string, any> = {};
-  for (const label of labels) {
-    properties[label] = {
+  fields.forEach((field, index) => {
+    properties[`field_${index}`] = {
       type: 'string',
-      description: `Grant answer for field "${label}".`,
+      description: `Grant answer for output field "${field.label}".`,
     };
-  }
+  });
 
   return {
     type: 'object',
     properties,
-    required: labels,
+    required: fields.map((_, index) => `field_${index}`),
     additionalProperties: false,
   };
+}
+
+function mapOpenAIJsonToStructured(
+  recipe: GrantRecipe,
+  raw: string,
+): GenerateResult {
+  let structured: Record<string, string> = {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      const fields = recipe.outputFields ?? [];
+      fields.forEach((field, index) => {
+        const key = `field_${index}`;
+        const value = (parsed as Record<string, unknown>)[key];
+        if (value !== undefined) {
+          structured[field.label] =
+            typeof value === 'string' ? value : JSON.stringify(value);
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to parse OpenAI JSON, falling back to raw text.', err);
+  }
+
+  if (Object.keys(structured).length === 0) {
+    structured = { 'Full Response': raw };
+  }
+
+  return { rawText: raw, structured };
 }
 
 export async function generateWithModel(
@@ -161,27 +191,7 @@ export async function generateWithModel(
 
       const data: any = await response.json();
       const jsonText = data.output?.[0]?.content?.[0]?.text ?? JSON.stringify(data);
-      let rawText = jsonText;
-      let structured: Record<string, string> = {};
-      try {
-        const parsed = JSON.parse(jsonText);
-        if (parsed && Array.isArray(parsed.fields)) {
-          parsed.fields.forEach((item: any) => {
-            if (item && typeof item.label === 'string' && typeof item.value === 'string') {
-              structured[item.label] = item.value;
-            }
-          });
-        } else {
-          structured = parseStructuredOutput(jsonText).structured;
-        }
-      } catch (err) {
-        console.warn('Failed to parse OpenAI structured output, using fallback.', err);
-        const fallback = parseStructuredOutput(jsonText);
-        rawText = fallback.rawText;
-        structured = fallback.structured;
-      }
-
-      return { rawText, structured: Object.keys(structured).length ? structured : { 'Full Response': rawText } };
+      return mapOpenAIJsonToStructured(recipe, jsonText);
     }
 
     if (provider === 'gemini') {

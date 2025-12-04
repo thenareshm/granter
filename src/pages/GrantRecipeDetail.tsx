@@ -49,6 +49,8 @@ const createEmptyRecipe = (): GrantRecipe => ({
   updatedAt: '',
   projectContextEnabled: false,
   projectContextFiles: [],
+  locked: false,
+  structuredOutput: {},
 });
 
 const GrantRecipeDetail = () => {
@@ -75,6 +77,7 @@ const GrantRecipeDetail = () => {
   const [contextMessage, setContextMessage] = useState<string | null>(null);
   const [generatedResult, setGeneratedResult] = useState<GenerateResult | null>(null);
   const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const contextMessageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isEditing = Boolean(id);
@@ -110,7 +113,13 @@ const GrantRecipeDetail = () => {
       modelType: existing.modelType || 'gemini-2.5-flash',
       projectContextEnabled: existing.projectContextEnabled ?? false,
       projectContextFiles: existing.projectContextFiles ?? [],
+      structuredOutput: existing.structuredOutput ?? {},
     });
+    if (existing.structuredOutput) {
+      setGeneratedResult({ rawText: '', structured: existing.structuredOutput });
+    } else {
+      setGeneratedResult(null);
+    }
     setIsDirty(false);
   }, [id, getRecipeById, recipesLoading, user]);
 
@@ -152,6 +161,7 @@ const GrantRecipeDetail = () => {
         projectContextEnabled: form.projectContextEnabled ?? false,
         projectContextFiles: form.projectContextFiles ?? [],
         locked: form.locked ?? false,
+        structuredOutput: form.structuredOutput ?? {},
       };
 
       const targetId = id ?? form.id;
@@ -176,6 +186,12 @@ const GrantRecipeDetail = () => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (form.structuredOutput && Object.keys(form.structuredOutput).length > 0) {
+      setGeneratedResult({ rawText: '', structured: form.structuredOutput });
+    }
+  }, [form.structuredOutput]);
 
   const handleFieldChange = <K extends keyof GrantRecipe>(
     key: K,
@@ -250,6 +266,7 @@ const GrantRecipeDetail = () => {
   };
 
   const handleGenerate = async () => {
+    if (isLocked) return;
     if (!user) {
       setError('Sign in with Google to save and generate.');
       return;
@@ -280,6 +297,7 @@ const GrantRecipeDetail = () => {
     };
 
     try {
+      setIsGenerating(true);
       const response = await generateWithModel({
         modelType: recipeForGen.modelType as SupportedModel,
         recipe: recipeForGen,
@@ -289,9 +307,16 @@ const GrantRecipeDetail = () => {
       setGeneratedResult(response);
 
       if (!recipeForGen.locked && recipeForGen.id) {
-        const lockedRecipe = { ...recipeForGen, locked: true };
+        const lockedRecipe = {
+          ...recipeForGen,
+          locked: true,
+          structuredOutput: response.structured,
+        };
         setForm(lockedRecipe);
-        await updateRecipe(lockedRecipe.id, { locked: true });
+        await updateRecipe(lockedRecipe.id, {
+          locked: true,
+          structuredOutput: response.structured,
+        });
       }
       // alert('Generation complete. See Structured Output below.');
     } catch (err) {
@@ -299,6 +324,8 @@ const GrantRecipeDetail = () => {
       const message = err instanceof Error ? err.message : 'Failed to generate';
       setGeneratedResult(null);
       alert(message);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -711,7 +738,7 @@ const GrantRecipeDetail = () => {
                 variant="secondary"
                 size="sm"
                 onClick={handleSave}
-                disabled={isLocked}
+                disabled={isLocked || isGenerating}
                 className="text-slate-700"
               >
                 <SaveIcon className="h-4 w-4" />
@@ -737,14 +764,26 @@ const GrantRecipeDetail = () => {
                     modelType: e.target.value as SupportedModel,
                   }))
                 }
-                disabled={isLocked}
+                disabled={isLocked || isGenerating}
               >
                 <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                 <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                 <option value="gpt-5.1">OpenAI GPT 5.1</option>
               </select>
-              <Button size="md" onClick={handleGenerate} disabled={isLocked}>
-                Generate
+              <Button
+                size="md"
+                onClick={handleGenerate}
+                disabled={isLocked || isGenerating}
+                className="inline-flex items-center justify-center"
+              >
+                {isGenerating ? (
+                  <div className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    Generating…
+                  </div>
+                ) : (
+                  'Generate'
+                )}
               </Button>
             </div>
           </div>

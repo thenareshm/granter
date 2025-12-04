@@ -72,6 +72,8 @@ const normalizeRecipe = (data: FirestoreRecipe, id: string): GrantRecipe => {
     updatedAt: updatedAtString,
     projectContextEnabled: data.projectContextEnabled ?? false,
     projectContextFiles: data.projectContextFiles ?? [],
+    locked: data.locked ?? false,
+    structuredOutput: data.structuredOutput ?? {},
   };
 };
 
@@ -137,6 +139,7 @@ export const GrantRecipesProvider = ({ children }: PropsWithChildren) => {
         projectContextEnabled: recipePartial.projectContextEnabled ?? false,
         projectContextFiles: recipePartial.projectContextFiles ?? [],
         locked: recipePartial.locked ?? false,
+        structuredOutput: recipePartial.structuredOutput ?? {},
       };
 
       const recipeRef = doc(db, 'users', currentUser.uid, 'recipes', id);
