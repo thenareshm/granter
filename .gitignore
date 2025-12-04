@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Node cache
+.npm-cache/
+.pnpm-store/
+node_modules/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
