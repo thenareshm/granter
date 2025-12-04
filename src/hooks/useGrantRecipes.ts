@@ -136,6 +136,7 @@ export const GrantRecipesProvider = ({ children }: PropsWithChildren) => {
         updatedAt: formatTimestamp(now),
         projectContextEnabled: recipePartial.projectContextEnabled ?? false,
         projectContextFiles: recipePartial.projectContextFiles ?? [],
+        locked: recipePartial.locked ?? false,
       };
 
       const recipeRef = doc(db, 'users', currentUser.uid, 'recipes', id);

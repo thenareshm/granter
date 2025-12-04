@@ -24,4 +24,5 @@ export interface GrantRecipe {
   updatedAt: string;
   projectContextEnabled?: boolean;
   projectContextFiles?: string[];
+  locked?: boolean;
 }

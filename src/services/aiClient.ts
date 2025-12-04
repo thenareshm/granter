@@ -29,7 +29,7 @@ export interface GenerateResult {
 
 function cleanApiKey(value: string | null | undefined, provider: Provider): string {
   if (!value) {
-    throw new Error(`${provider === 'openai' ? 'OpenAI' : 'Gemini'} API key missing. Add it in Settings → API Keys.`);
+    throw new Error(`${provider === 'openai' ? 'OpenAI' : 'Gemini'} API key missing. Add it in Settings -> API Keys.`);
   }
   const trimmed = value.trim();
   if (/\r|\n/.test(trimmed)) {
@@ -37,36 +37,16 @@ function cleanApiKey(value: string | null | undefined, provider: Provider): stri
       `${provider === 'openai' ? 'OpenAI' : 'Gemini'} API key is invalid. Remove line breaks or special characters.`,
     );
   }
+  if (/[^\u0000-\u007F]/.test(trimmed)) {
+    throw new Error(
+      `${provider === 'openai' ? 'OpenAI' : 'Gemini'} API key contains unsupported characters. Use only standard ASCII characters.`,
+    );
+  }
   return trimmed;
 }
 
-function buildOpenAIJsonSchema(recipe: GrantRecipe) {
-  const labels = recipe.outputFields?.map((f) => f.label).filter(Boolean) ?? [];
-
-  const properties: Record<string, unknown> = {};
-  for (const label of labels) {
-    properties[label] = {
-      type: 'string',
-      description: `Grant answer for field "${label}".`,
-    };
-  }
-
-  return {
-    name: 'grant_outputs',
-    strict: true,
-    schema: {
-      type: 'object',
-      properties,
-      required: labels,
-      additionalProperties: false,
-    },
-  };
-}
-
 function buildSystemAndUser(recipe: GrantRecipe) {
-  const system =
-    'You are an expert nonprofit grant writer. ' +
-    'You help fill in grant application fields with clear, specific answers.';
+  const system = 'You are an assistant that writes grant proposal sections with structured JSON output.';
 
   const inputs =
     recipe.inputParams?.length
@@ -108,6 +88,25 @@ function parseStructuredOutput(raw: string): GenerateResult {
   return { rawText: raw, structured };
 }
 
+function buildOpenAIJsonSchema(recipe: GrantRecipe) {
+  const labels = recipe.outputFields?.map((f) => f.label).filter(Boolean) ?? [];
+
+  const properties: Record<string, any> = {};
+  for (const label of labels) {
+    properties[label] = {
+      type: 'string',
+      description: `Grant answer for field "${label}".`,
+    };
+  }
+
+  return {
+    type: 'object',
+    properties,
+    required: labels,
+    additionalProperties: false,
+  };
+}
+
 export async function generateWithModel(
   { modelType, recipe, apiKeys }: GenerateRequest,
 ): Promise<GenerateResult> {
@@ -117,10 +116,10 @@ export async function generateWithModel(
   const { provider, apiModel } = config;
 
   if (provider === 'gemini' && !apiKeys.geminiApiKey) {
-    throw new Error('Gemini API key missing. Add it in Settings → API Keys.');
+    throw new Error('Gemini API key missing. Add it in Settings -> API Keys.');
   }
   if (provider === 'openai' && !apiKeys.openaiApiKey) {
-    throw new Error('OpenAI API key missing. Add it in Settings → API Keys.');
+    throw new Error('OpenAI API key missing. Add it in Settings -> API Keys.');
   }
 
   const { system, user } = buildSystemAndUser(recipe);
@@ -128,44 +127,67 @@ export async function generateWithModel(
   try {
     if (provider === 'openai') {
       const apiKey = cleanApiKey(apiKeys.openaiApiKey, 'openai');
-      const jsonSchema = buildOpenAIJsonSchema(recipe);
+      const schema = buildOpenAIJsonSchema(recipe);
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      };
+
+      const payload = {
+        model: apiModel,
+        input: `${system}\n\n${user}`,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'grant_outputs',
+            schema,
+          },
+        },
+      };
+
+      console.log('[OpenAI] Calling model', apiModel, 'hasKey', !!apiKey);
 
       const response = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: apiModel,
-          input: [
-            { role: 'system', content: [{ type: 'input_text', text: system }] },
-            { role: 'user', content: [{ type: 'input_text', text: user }] },
-          ],
-          response_format: {
-            type: 'json_schema',
-            json_schema: jsonSchema,
-          },
-        }),
+        headers,
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('OpenAI error:', errorText);
-        throw new Error('OpenAI request failed. Check your model and API key.');
+        console.error('[OpenAI] Error status', response.status, 'body:', errorText);
+        throw new Error('OpenAI request failed');
       }
 
       const data: any = await response.json();
-      const rawText = data.output?.[0]?.content?.[0]?.text ?? JSON.stringify(data);
-      return parseStructuredOutput(rawText);
+      const jsonText = data.output?.[0]?.content?.[0]?.text ?? JSON.stringify(data);
+      let rawText = jsonText;
+      let structured: Record<string, string> = {};
+      try {
+        const parsed = JSON.parse(jsonText);
+        if (parsed && Array.isArray(parsed.fields)) {
+          parsed.fields.forEach((item: any) => {
+            if (item && typeof item.label === 'string' && typeof item.value === 'string') {
+              structured[item.label] = item.value;
+            }
+          });
+        } else {
+          structured = parseStructuredOutput(jsonText).structured;
+        }
+      } catch (err) {
+        console.warn('Failed to parse OpenAI structured output, using fallback.', err);
+        const fallback = parseStructuredOutput(jsonText);
+        rawText = fallback.rawText;
+        structured = fallback.structured;
+      }
+
+      return { rawText, structured: Object.keys(structured).length ? structured : { 'Full Response': rawText } };
     }
 
     if (provider === 'gemini') {
       const apiKey = cleanApiKey(apiKeys.geminiApiKey, 'gemini');
       const prompt = `${system}\n\n${user}`;
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent?key=${encodeURIComponent(
-        apiKey,
-      )}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
       const response = await fetch(url, {
         method: 'POST',

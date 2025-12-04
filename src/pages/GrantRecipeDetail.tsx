@@ -74,12 +74,14 @@ const GrantRecipeDetail = () => {
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [contextMessage, setContextMessage] = useState<string | null>(null);
   const [generatedResult, setGeneratedResult] = useState<GenerateResult | null>(null);
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
   const contextMessageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isEditing = Boolean(id);
   const selectedProjectContextFiles = form.projectContextFiles ?? [];
   const projectContextEnabled = form.projectContextEnabled ?? false;
   const attachedFilesCount = selectedProjectContextFiles.length;
+  const isLocked = Boolean(form.locked);
 
   useEffect(() => {
     if (recipesLoading) return;
@@ -149,6 +151,7 @@ const GrantRecipeDetail = () => {
         updatedAt: now,
         projectContextEnabled: form.projectContextEnabled ?? false,
         projectContextFiles: form.projectContextFiles ?? [],
+        locked: form.locked ?? false,
       };
 
       const targetId = id ?? form.id;
@@ -284,6 +287,12 @@ const GrantRecipeDetail = () => {
       });
       console.log('Project context for generation:', projectContextInfo);
       setGeneratedResult(response);
+
+      if (!recipeForGen.locked && recipeForGen.id) {
+        const lockedRecipe = { ...recipeForGen, locked: true };
+        setForm(lockedRecipe);
+        await updateRecipe(lockedRecipe.id, { locked: true });
+      }
       // alert('Generation complete. See Structured Output below.');
     } catch (err) {
       console.error(err);
@@ -320,16 +329,35 @@ const GrantRecipeDetail = () => {
 
     const source = saved ?? form;
 
-    const clone: Partial<GrantRecipe> = {
-      ...source,
+    const baseDescription = source.description || 'Untitled';
+    const description = baseDescription.endsWith('(copy)')
+      ? baseDescription
+      : `${baseDescription} (copy)`;
+
+    const clonedInputParams = source.inputParams.map((param) => ({
+      ...param,
       id: crypto.randomUUID(),
-      description: `${source.description || 'Untitled'} (copy)`,
+    }));
+    const clonedOutputFields = source.outputFields.map((field) => ({
+      ...field,
+      id: crypto.randomUUID(),
+    }));
+
+    const clone: Partial<GrantRecipe> = {
+      description,
+      prompt: source.prompt,
+      inputParams: clonedInputParams,
+      outputFields: clonedOutputFields,
+      tokenCount: 0,
+      modelType: source.modelType,
       updatedAt: formatTimestamp(new Date()),
-      tokenCount: computeTokenCount(source.prompt),
+      locked: false,
+      projectContextEnabled: source.projectContextEnabled ?? false,
+      projectContextFiles: source.projectContextFiles ?? [],
     };
 
-    await createRecipe(clone);
-    navigate('/grant-recipes');
+    const newRecipe = await createRecipe(clone);
+    navigate(`/grant-recipes/${newRecipe.id}`);
   };
 
   const handleAddInput = () => {
@@ -362,6 +390,19 @@ const GrantRecipeDetail = () => {
       outputFields: prev.outputFields.filter((field) => field.id !== fieldId),
     }));
     setIsDirty(true);
+  };
+
+  const handleCopyField = async (label: string) => {
+    if (!generatedResult) return;
+    const value = generatedResult.structured[label];
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedLabel(label);
+      window.setTimeout(() => setCopiedLabel(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy field to clipboard', err);
+    }
   };
 
   const pageTitle = useMemo(
@@ -406,6 +447,12 @@ const GrantRecipeDetail = () => {
         </div>
       )}
 
+      {isLocked && (
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
+          This recipe is locked because a structured output was generated. Clone it to make changes.
+        </div>
+      )}
+
       <Card>
         {apiKeysError && (
           <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
@@ -427,6 +474,7 @@ const GrantRecipeDetail = () => {
               type="text"
               value={form.description}
               onChange={(event) => handleFieldChange('description', event.target.value)}
+              disabled={isLocked}
               className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
               placeholder="Short summary for this recipe"
             />
@@ -438,6 +486,7 @@ const GrantRecipeDetail = () => {
               <button
                 type="button"
                 onClick={handleOpenProjectContext}
+                disabled={isLocked}
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-brand-600 shadow-sm transition hover:bg-brand-50"
                 aria-label="Attach project context"
               >
@@ -453,6 +502,7 @@ const GrantRecipeDetail = () => {
             <textarea
               value={form.prompt}
               onChange={(event) => handleFieldChange('prompt', event.target.value)}
+              disabled={isLocked}
               rows={6}
               className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
               placeholder="System prompt for your grant recipe"
@@ -481,7 +531,7 @@ const GrantRecipeDetail = () => {
               <Toggle
                 checked={projectContextEnabled}
                 onChange={handleProjectContextToggle}
-                disabled={attachedFilesCount === 0}
+                disabled={attachedFilesCount === 0 || isLocked}
                 labelOff="Off"
                 labelOn="On"
               />
@@ -497,6 +547,7 @@ const GrantRecipeDetail = () => {
                 variant="outline"
                 size="sm"
                 onClick={handleAddInput}
+                disabled={isLocked}
                 className="border-green-500 text-green-700 hover:bg-green-50"
               >
                 <PlusIcon className="h-4 w-4" />
@@ -515,6 +566,7 @@ const GrantRecipeDetail = () => {
                     onChange={(event) =>
                       handleInputParamChange(param.id, 'key', event.target.value)
                     }
+                    disabled={isLocked}
                     placeholder="Key"
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                   />
@@ -524,6 +576,7 @@ const GrantRecipeDetail = () => {
                     onChange={(event) =>
                       handleInputParamChange(param.id, 'value', event.target.value)
                     }
+                    disabled={isLocked}
                     placeholder="Value"
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                   />
@@ -532,6 +585,7 @@ const GrantRecipeDetail = () => {
                     size="sm"
                     className="justify-center text-red-600 hover:bg-red-50"
                     onClick={() => handleRemoveInput(param.id)}
+                    disabled={isLocked}
                   >
                     <TrashIcon className="h-4 w-4" />
                     Remove
@@ -555,6 +609,7 @@ const GrantRecipeDetail = () => {
                 variant="outline"
                 size="sm"
                 onClick={handleAddOutput}
+                disabled={isLocked}
                 className="border-green-500 text-green-700 hover:bg-green-50"
               >
                 <PlusIcon className="h-4 w-4" />
@@ -585,6 +640,7 @@ const GrantRecipeDetail = () => {
                               event.target.value,
                             )
                           }
+                          disabled={isLocked}
                           placeholder="e.g. Summary, Budget"
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                         />
@@ -605,6 +661,7 @@ const GrantRecipeDetail = () => {
                             }
                             labelOff="Words"
                             labelOn="Chars"
+                            disabled={isLocked}
                           />
                         </div>
                         <input
@@ -620,6 +677,7 @@ const GrantRecipeDetail = () => {
                                 : Number(event.target.value),
                             )
                           }
+                          disabled={isLocked}
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                         />
                       </div>
@@ -629,6 +687,7 @@ const GrantRecipeDetail = () => {
                           size="sm"
                           className="w-full justify-center text-red-600 hover:bg-red-50"
                           onClick={() => handleRemoveOutput(field.id)}
+                          disabled={isLocked}
                         >
                           <TrashIcon className="h-4 w-4" />
                           Remove
@@ -652,6 +711,7 @@ const GrantRecipeDetail = () => {
                 variant="secondary"
                 size="sm"
                 onClick={handleSave}
+                disabled={isLocked}
                 className="text-slate-700"
               >
                 <SaveIcon className="h-4 w-4" />
@@ -677,12 +737,13 @@ const GrantRecipeDetail = () => {
                     modelType: e.target.value as SupportedModel,
                   }))
                 }
+                disabled={isLocked}
               >
                 <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                 <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                 <option value="gpt-5.1">OpenAI GPT 5.1</option>
               </select>
-              <Button size="md" onClick={handleGenerate}>
+              <Button size="md" onClick={handleGenerate} disabled={isLocked}>
                 Generate
               </Button>
             </div>
@@ -697,7 +758,7 @@ const GrantRecipeDetail = () => {
             {form.outputFields.map((field) => (
               <div
                 key={field.id}
-                className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:gap-4"
+                className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:gap-4"
               >
                 <div className="w-full text-sm font-medium text-slate-700 sm:w-1/3">
                   {field.label}
@@ -705,6 +766,26 @@ const GrantRecipeDetail = () => {
                 <div className="w-full text-sm text-slate-700 sm:w-2/3">
                   {generatedResult.structured[field.label] ?? (
                     <span className="italic text-slate-400">No value generated.</span>
+                  )}
+                  {generatedResult.structured[field.label] && (
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyField(field.label)}
+                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="h-3 w-3"
+                        >
+                          <path d="M6 2a2 2 0 0 0-2 2v8h2V4h6V2H6z" />
+                          <path d="M8 6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V6z" />
+                        </svg>
+                        {copiedLabel === field.label ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
