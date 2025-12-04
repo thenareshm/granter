@@ -1,12 +1,13 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Table } from '../components/Table';
-import { EditIcon, PlusIcon, TrashIcon } from '../components/Icons';
+import { EditIcon, PlusIcon, TrashIcon, DuplicateIcon } from '../components/Icons';
 import { useGrantRecipes } from '../hooks/useGrantRecipes';
 import { useAuth } from '../context/AuthContext';
 
 const GrantRecipesList = () => {
   const { user } = useAuth();
-  const { recipes, deleteRecipe, loading } = useGrantRecipes();
+  const { recipes, deleteRecipe, loading, getRecipeById, createRecipe } =
+    useGrantRecipes();
   const navigate = useNavigate();
 
   const handleDelete = async (
@@ -24,6 +25,50 @@ const GrantRecipesList = () => {
     } catch (error) {
       console.error('Failed to delete recipe', error);
       alert('Please sign in to delete recipes.');
+    }
+  };
+
+  const handleClone = async (
+    event: React.MouseEvent<HTMLButtonElement>,
+    id: string,
+  ) => {
+    event.stopPropagation();
+
+    const original = getRecipeById(id);
+    if (!original) return;
+
+    const baseDescription = original.description || 'Untitled';
+    const existingDescriptions = recipes.map((r) => r.description || 'Untitled');
+
+    let copyIndex = 1;
+    let newDescription = '';
+    while (true) {
+      newDescription =
+        copyIndex === 1
+          ? `${baseDescription} (copy)`
+          : `${baseDescription} (copy ${copyIndex})`;
+
+      if (!existingDescriptions.includes(newDescription)) break;
+      copyIndex += 1;
+    }
+
+    try {
+      const cloned = await createRecipe({
+        description: newDescription,
+        prompt: original.prompt,
+        inputParams: original.inputParams,
+        outputFields: original.outputFields,
+        modelType: original.modelType,
+        projectContextEnabled: original.projectContextEnabled,
+        projectContextFiles: original.projectContextFiles,
+        locked: false,
+        structuredOutput: {},
+      });
+
+      navigate(`/grant-recipes/${cloned.id}`);
+    } catch (error) {
+      console.error('Failed to clone recipe', error);
+      alert('Please sign in to clone recipes.');
     }
   };
 
@@ -97,6 +142,14 @@ const GrantRecipesList = () => {
                       aria-label="Edit"
                     >
                       <EditIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => handleClone(event, recipe.id)}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-slate-600 transition hover:bg-slate-100"
+                      aria-label="Clone"
+                    >
+                      <DuplicateIcon className="h-4 w-4" />
                     </button>
                     <button
                       type="button"
