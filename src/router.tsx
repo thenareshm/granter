@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import GrantRecipeDetail from './pages/GrantRecipeDetail';
 import GrantRecipesList from './pages/GrantRecipesList';
 import ApiKeysSettings from './pages/ApiKeysSettings';
+import DriveConnectPage from './pages/DriveConnectPage';
 
 export const router = createBrowserRouter([
   {
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
       { path: 'grant-recipes/new', element: <GrantRecipeDetail /> },
       { path: 'grant-recipes/:id', element: <GrantRecipeDetail /> },
       { path: 'settings/api-keys', element: <ApiKeysSettings /> },
+      { path: 'drive', element: <DriveConnectPage /> },
     ],
   },
 ]);

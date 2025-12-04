@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useAuth } from '../context/AuthContext';
-import { useApiKeys } from '../hooks/useApiKeys';
+import { useUserSettings } from '../hooks/useUserSettings';
 
 const ApiKeysSettings = () => {
   const { user } = useAuth();
-  const { apiKeys, loading, error, saveApiKeys } = useApiKeys();
+  const { settings, loading, error, saveApiKeys } = useUserSettings();
 
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
@@ -16,11 +16,11 @@ const ApiKeysSettings = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
-    if (apiKeys) {
-      setGeminiKey(apiKeys.geminiApiKey ?? '');
-      setOpenaiKey(apiKeys.openaiApiKey ?? '');
+    if (settings) {
+      setGeminiKey(settings.geminiApiKey ?? '');
+      setOpenaiKey(settings.openaiApiKey ?? '');
     }
-  }, [apiKeys]);
+  }, [settings]);
 
   const handleSave = async () => {
     setSaving(true);

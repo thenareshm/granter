@@ -11,7 +11,7 @@ import {
   useGrantRecipes,
 } from '../hooks/useGrantRecipes';
 import { useAuth } from '../context/AuthContext';
-import { useApiKeys } from '../hooks/useApiKeys';
+import { useUserSettings } from '../hooks/useUserSettings';
 import {
   generateWithModel,
   type GenerateResult,
@@ -64,10 +64,10 @@ const GrantRecipeDetail = () => {
     loading: recipesLoading,
   } = useGrantRecipes();
   const {
-    apiKeys,
-    loading: apiKeysLoading,
-    error: apiKeysError,
-  } = useApiKeys();
+    settings,
+    loading: settingsLoading,
+    error: settingsError,
+  } = useUserSettings();
 
   const [form, setForm] = useState<GrantRecipe>(createEmptyRecipe());
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +85,13 @@ const GrantRecipeDetail = () => {
   const projectContextEnabled = form.projectContextEnabled ?? false;
   const attachedFilesCount = selectedProjectContextFiles.length;
   const isLocked = Boolean(form.locked);
+  const apiKeys = settings
+    ? {
+        geminiApiKey: settings.geminiApiKey ?? null,
+        openaiApiKey: settings.openaiApiKey ?? null,
+      }
+    : null;
+  const driveConnected = settings?.driveConnected ?? false;
 
   useEffect(() => {
     if (recipesLoading) return;
@@ -271,7 +278,7 @@ const GrantRecipeDetail = () => {
       setError('Sign in with Google to save and generate.');
       return;
     }
-    if (apiKeysLoading) {
+    if (settingsLoading) {
       alert('Loading API key settings, please try again in a moment.');
       return;
     }
@@ -481,9 +488,9 @@ const GrantRecipeDetail = () => {
       )}
 
       <Card>
-        {apiKeysError && (
+        {settingsError && (
           <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-            {apiKeysError}
+            {settingsError}
           </div>
         )}
         {error && (
@@ -549,6 +556,11 @@ const GrantRecipeDetail = () => {
                     {projectContextEnabled
                       ? `Project context ON • ${attachedFilesCount} file${attachedFilesCount === 1 ? '' : 's'} selected`
                       : `${attachedFilesCount} file${attachedFilesCount === 1 ? '' : 's'} selected • toggle to include in prompt`}
+                  </p>
+                )}
+                {!driveConnected && (
+                  <p className="text-xs text-amber-600">
+                    Connect Google Drive in the Drive tab to attach project context files.
                   </p>
                 )}
                 {contextMessage && (
